@@ -4,7 +4,7 @@ Plugin Name: Monero Price Plugin
 Description: Display real-time Monero price on a WordPress page.
 */
 
-// Function to fetch Monero price from the API
+// Function to fetch Monero price from Coingecko
 function fetch_monero_price() {
     $url = 'https://api.coingecko.com/api/v3/simple/price?ids=monero&vs_currencies=usd';
     $response = wp_remote_get($url);
@@ -14,8 +14,9 @@ function fetch_monero_price() {
         $data = json_decode($body, true);
 
         if (isset($data['monero']['usd'])) {
-            // Call the function to write prices to the database
+            // Write Monero price to the database
             write_monero_price_to_database('usd', intval($data['monero']['usd'] * 1e8));
+
             return $data['monero']['usd'];
         }
     }
@@ -28,22 +29,24 @@ function write_monero_price_to_database($currency, $rate) {
     global $wpdb;
 
     $table_name = $wpdb->prefix . 'monero_gateway_live_rates';
-    
+
     $query = $wpdb->prepare("INSERT INTO $table_name (currency, rate, updated) VALUES (%s, %d, NOW()) ON DUPLICATE KEY UPDATE rate=%d, updated=NOW()", array($currency, $rate, $rate));
 
     $result = $wpdb->query($query);
 
-    if (!$result) {
+    if ($result === false) {
         // Log an error if writing to the database fails
-        self::$log->add('Monero_Payments', "[ERROR] Unable to write Monero price to the database.");
+        error_log("[ERROR] Unable to write Monero price to the database.");
     }
 }
 
-// Function to add the Monero price shortcode
+// Shortcode to display Monero price
 function monero_price_shortcode() {
     $price = fetch_monero_price();
     return "<p>Current Monero Price: \${$price}</p>";
 }
+
+add_shortcode('monero_price', 'monero_price_shortcode');
 
 // Schedule the task to run every 5 minutes
 function schedule_monero_price_update() {
@@ -51,6 +54,8 @@ function schedule_monero_price_update() {
         wp_schedule_event(time(), 'five_minutes', 'update_monero_price');
     }
 }
+
+add_action('wp', 'schedule_monero_price_update');
 
 // Hook to execute the task
 add_action('update_monero_price', 'fetch_monero_price');
