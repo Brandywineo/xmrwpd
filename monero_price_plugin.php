@@ -11,7 +11,7 @@ function monero_price_shortcode($atts) {
     ), $atts);
 
     $currency = strtoupper($atts['currency']);
-    $price = fetch_monero_price($currency);
+    $price = get_monero_price_from_database($currency);
 
     return "<p>1 XMR = {$price} {$currency}</p>";
 }
@@ -42,21 +42,19 @@ function add_five_minutes_interval($schedules) {
 
 add_filter('cron_schedules', 'add_five_minutes_interval');
 
-// Function to fetch Monero price in a specific currency
-function fetch_monero_price($currency) {
-    $url = "https://api.coingecko.com/api/v3/simple/price?ids=monero&vs_currencies={$currency}";
-    $response = wp_remote_get($url);
+// Function to get Monero price from the database
+function get_monero_price_from_database($currency) {
+    global $wpdb;
 
-    if (is_array($response) && !is_wp_error($response)) {
-        $body = wp_remote_retrieve_body($response);
-        $data = json_decode($body, true);
+    $table_name = $wpdb->prefix . 'monero_gateway_live_rates';
+    $query = $wpdb->prepare("SELECT rate FROM $table_name WHERE currency = %s", $currency);
+    $rate = $wpdb->get_var($query);
 
-        if (isset($data['monero'][$currency])) {
-            return number_format($data['monero'][$currency], 5); // Format to 5 decimal places
-        }
+    if ($rate !== null) {
+        return number_format($rate / 1e8, 5); // Format to 5 decimal places
     }
 
-    return 'Error fetching Monero price.';
+    return 'Error fetching Monero price from the database.';
 }
 
 // Function to update MoneroWP rates in the database
@@ -80,10 +78,10 @@ function update_monero_wp_rates() {
             $result = $wpdb->query($query);
 
             if (!$result) {
-                self::$log->add('Monero_Payments', "[ERROR] Unable to update MoneroWP rates.");
+                error_log("[ERROR] Unable to update MoneroWP rates.");
             }
         } else {
-            self::$log->add('Monero_Payments', "[ERROR] Unable to fetch USD prices from coingecko.com.");
+            error_log("[ERROR] Unable to fetch USD prices from coingecko.com.");
         }
     }
 }
