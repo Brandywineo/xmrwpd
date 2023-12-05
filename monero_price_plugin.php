@@ -1,65 +1,22 @@
 <?php
 /*
 Plugin Name: Monero Price Plugin
-Description: Display real-time Monero prices on a WordPress page.
+Description: Display real-time Monero price on a WordPress page and update MoneroWP rates.
 */
 
-function fetch_monero_price($currency = 'USD') {
-    $currencies = array(
-        'AED', 'AFN', 'ALL', 'AMD', 'ANG', 'AOA', 'ARS', 'AUD', 'AWG', 'AZN',
-        'BAM', 'BBD', 'BDT', 'BGN', 'BHD', 'BIF', 'BMD', 'BND', 'BOB', 'BRL',
-        'BSD', 'BTC', 'BTN', 'BWP', 'BYN', 'BYR', 'BZD', 'CAD', 'CDF', 'CHF',
-        'CLF', 'CLP', 'CNY', 'COP', 'CRC', 'CUC', 'CUP', 'CVE', 'CZK', 'DJF',
-        'DKK', 'DOP', 'DZD', 'EGP', 'ERN', 'ETB', 'EUR', 'FJD', 'FKP', 'GBP',
-        'GEL', 'GGP', 'GHS', 'GIP', 'GMD', 'GNF', 'GTQ', 'GYD', 'HKD', 'HNL',
-        'HRK', 'HTG', 'HUF', 'IDR', 'ILS', 'IMP', 'INR', 'IQD', 'IRR', 'ISK',
-        'JEP', 'JMD', 'JOD', 'JPY', 'KES', 'KGS', 'KHR', 'KMF', 'KPW', 'KRW',
-        'KWD', 'KYD', 'KZT', 'LAK', 'LBP', 'LKR', 'LRD', 'LSL', 'LTL', 'LVL',
-        'LYD', 'MAD', 'MDL', 'MGA', 'MKD', 'MMK', 'MNT', 'MOP', 'MRO', 'MUR',
-        'MVR', 'MWK', 'MXN', 'MYR', 'MZN', 'NAD', 'NGN', 'NIO', 'NOK', 'NPR',
-        'NZD', 'OMR', 'PAB', 'PEN', 'PGK', 'PHP', 'PKR', 'PLN', 'PYG', 'QAR',
-        'RON', 'RSD', 'RUB', 'RWF', 'SAR', 'SBD', 'SCR', 'SDG', 'SEK', 'SGD',
-        'SHP', 'SLL', 'SOS', 'SRD', 'STD', 'SVC', 'SYP', 'SZL', 'THB', 'TJS',
-        'TMT', 'TND', 'TOP', 'TRY', 'TTD', 'TWD', 'TZS', 'UAH', 'UGX', 'USD',
-        'UYU', 'UZS', 'VEF', 'VND', 'VUV', 'WST', 'XAF', 'XAG', 'XAU', 'XCD',
-        'XDR', 'XOF', 'XPF', 'YER', 'ZAR', 'ZMK', 'ZMW', 'ZWL'
-    );
-
-    $ids = implode(',', array_map('strtolower', $currencies));
-    $url = 'https://api.coingecko.com/api/v3/simple/price?ids=monero&vs_currencies=' . $ids;
-    
-    $response = wp_remote_get($url);
-
-    if (is_array($response) && !is_wp_error($response)) {
-        $body = wp_remote_retrieve_body($response);
-        $data = json_decode($body, true);
-
-        if (isset($data['monero'][$currency])) {
-            $price = $data['monero'][$currency];
-            return $price;
-        }
-    }
-
-    return 'Error fetching Monero price.';
-}
-
+// Shortcode for displaying Monero prices
 function monero_price_shortcode($atts) {
     $atts = shortcode_atts(array(
-        'currency' => 'USD',
+        'currency' => 'USD', // Default currency is USD
     ), $atts);
 
-    $price = fetch_monero_price(strtoupper($atts['currency']));
+    $currency = strtoupper($atts['currency']);
+    $price = fetch_monero_price($currency);
 
-    if (!is_numeric($price)) {
-        return "<p>Error: $price</p>";
-    }
-
-    $output = "1 XMR = $price {$atts['currency']}";
-
-    return $output;
+    return "<p>1 XMR = {$price} {$currency}</p>";
 }
 
-add_shortcode('monero-price', 'monero_price_shortcode');
+add_shortcode('monero_price', 'monero_price_shortcode');
 
 // Schedule the task to run every 5 minutes
 function schedule_monero_price_update() {
@@ -71,7 +28,7 @@ function schedule_monero_price_update() {
 add_action('wp', 'schedule_monero_price_update');
 
 // Hook to execute the task
-add_action('update_monero_price', 'fetch_monero_price');
+add_action('update_monero_price', 'update_monero_wp_rates');
 
 // Define the interval
 function add_five_minutes_interval($schedules) {
@@ -84,3 +41,49 @@ function add_five_minutes_interval($schedules) {
 }
 
 add_filter('cron_schedules', 'add_five_minutes_interval');
+
+// Function to fetch Monero price in a specific currency
+function fetch_monero_price($currency) {
+    $url = "https://api.coingecko.com/api/v3/simple/price?ids=monero&vs_currencies={$currency}";
+    $response = wp_remote_get($url);
+
+    if (is_array($response) && !is_wp_error($response)) {
+        $body = wp_remote_retrieve_body($response);
+        $data = json_decode($body, true);
+
+        if (isset($data['monero'][$currency])) {
+            return number_format($data['monero'][$currency], 5); // Format to 5 decimal places
+        }
+    }
+
+    return 'Error fetching Monero price.';
+}
+
+// Function to update MoneroWP rates in the database
+function update_monero_wp_rates() {
+    global $wpdb;
+
+    // Get Live Price in USD
+    $currency = 'USD';
+    $url = "https://api.coingecko.com/api/v3/simple/price?ids=monero&vs_currencies={$currency}";
+    $response = wp_remote_get($url);
+
+    if (is_array($response) && !is_wp_error($response)) {
+        $body = wp_remote_retrieve_body($response);
+        $data = json_decode($body, true);
+
+        if (isset($data['monero'][$currency])) {
+            $table_name = $wpdb->prefix . 'monero_gateway_live_rates';
+            $rate = intval($data['monero'][$currency] * 1e8);
+
+            $query = $wpdb->prepare("INSERT INTO $table_name (currency, rate, updated) VALUES (%s, %d, NOW()) ON DUPLICATE KEY UPDATE rate=%d, updated=NOW()", array($currency, $rate, $rate));
+            $result = $wpdb->query($query);
+
+            if (!$result) {
+                self::$log->add('Monero_Payments', "[ERROR] Unable to update MoneroWP rates.");
+            }
+        } else {
+            self::$log->add('Monero_Payments', "[ERROR] Unable to fetch USD prices from coingecko.com.");
+        }
+    }
+}
