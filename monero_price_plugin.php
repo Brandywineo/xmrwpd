@@ -28,7 +28,7 @@ function fetch_monero_price() {
 function write_monero_price_to_database($currency, $rate) {
     global $wpdb;
 
-    $table_name = $wpdb->prefix . 'moneron_gateway_live_rates';
+    $table_name = $wpdb->prefix . 'monero_gateway_live_rates';
 
     $query = $wpdb->prepare("INSERT INTO $table_name (currency, rate, updated) VALUES (%s, %d, NOW()) ON DUPLICATE KEY UPDATE rate=%d, updated=NOW()", array($currency, $rate, $rate));
 
